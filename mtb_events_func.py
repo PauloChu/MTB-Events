@@ -222,7 +222,7 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
     tumble_length_history = {}
 
     if write:
-        f = open(filedir / "MTB_Events_Results.csv", "w")
+        f = open(filedir + "/MTB_Events_Results.csv", "w")
         f.write(
             "filename,fpra,total_frames,num_revs,prob_of_rev,num_tumbles,prob_of_tumble,frame_threshold_count,framerate")
 
@@ -334,7 +334,7 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
 
             if debugprints:
                 print(str(trajectory) + ": " + str(trajectory_events))
-                show_trajectory(filename, trajectory, fpra, heading_std_threshold, speed_fraction)
+                show_trajectory(file, trajectory, fpra, heading_std_threshold, speed_fraction)
 
         total_frames = 0
         for trajectory in x_pos:
