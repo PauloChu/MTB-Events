@@ -215,6 +215,9 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
 
     if isinstance(speed_fraction, str) or speed_fraction > 1 or speed_fraction < 0:
         raise ValueError("speed_fraction must be a float between 0 and 1")
+        
+    if fpra > frame_threshold_count:
+        raise ValueErorr("frame_threshold_count must be greather than the FPRA.")
 
     files = os.listdir(filedir)
     if files.count(".DS_Store") > 0:
