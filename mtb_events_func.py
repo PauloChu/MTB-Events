@@ -69,15 +69,15 @@ def show_trajectory(filename, traj, fpra=1, heading_std_threshold=0.4, speed_fra
     ax2.set_ylabel("Speed (pixels/tick)")
     ax2.plot(range(len(speed)), speed, label='normal')
     ax2.plot(range(len(rolled_speed)), rolled_speed, color='black', label='rolling')
-    ax2.hlines(speed_fraction * np.median(rolled_speed), 0, len(rolled_speed), linestyles='--', label='median r-speed',
+    ax2.hlines(speed_fraction * np.median(rolled_speed), 0, len(rolled_speed), linestyles='--', label='fraction of median r-speed',
                color='black')
     plt.legend(fontsize='x-small')
 
     ax3 = fig.add_subplot(gs[1, 0])
     ax3.set_xlabel("Tick")
     ax3.set_ylabel("Heading")
-    ax3.plot(range(len(heading[0])), heading[0], label='x')
-    ax3.plot(range(len(heading[0])), heading[1], label='y')
+#     ax3.plot(range(len(heading[0])), heading[0], label='x')
+#     ax3.plot(range(len(heading[0])), heading[1], label='y')
     ax3.plot(range(len(rolled_heading[0])), rolled_heading[0], label='x-roll')
     ax3.plot(range(len(rolled_heading[1])), rolled_heading[1], label='y-roll')
     plt.legend(fontsize='x-small')
@@ -86,8 +86,10 @@ def show_trajectory(filename, traj, fpra=1, heading_std_threshold=0.4, speed_fra
     ax4.set_xlabel("Tick")
     ax4.set_ylabel("Heading STD")
     ax4.plot(range(len(rolled_heading_std)), rolled_heading_std, label='std_roll')
-    ax4.hlines(heading_std_threshold * np.median(rolled_heading_std), 0, len(rolled_heading_std), linestyles='--',
-               label='median roll_head', color='black')
+    ax4.hlines(heading_std_threshold, 0, len(rolled_heading_std), linestyles='--',
+               label='heading_std_threshold', color='black')
+    ax4.hlines(np.median(rolled_heading_std), 0, len(rolled_heading_std), linestyles='--',
+               label='median std', color='red')
     plt.legend(fontsize='x-small')
 
     fig.suptitle("Trajectory " + str(traj) + ", " + str(filename[0:-4]))
@@ -296,7 +298,7 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
                     slowing = False
 
                 # If large change in heading standard deviation
-                if rolled_heading_std[k] > 0.4:
+                if rolled_heading_std[k] > heading_std_threshold:
                     changing_direction = True
                     if event_changing_direction:
                         prolonged_changing_direction = True
@@ -311,8 +313,8 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
                     changing_direction = False
 
                 if not directions_swap and not changing_direction and not slowing:
-                    if slowed and prolonged_changing_direction and tumble_length_history.get(
-                            filename + " " + str(trajectory)) > 1:
+                    if slowed or(prolonged_changing_direction and tumble_length_history.get(
+                            filename + " " + str(trajectory)) > 1):
                         result = 'tumble'
                         if debugprints:
                             print("----- Tumble at tick " + str(k) + " -----")
@@ -335,7 +337,7 @@ def get_events(filedir, fpra, frame_threshold_count, heading_std_threshold=0.4, 
             tumbles += trajectory_events.count('tumble')
             reverses += trajectory_events.count('reverse')
 
-            if debugprints:
+            if debugprints and len(trajectory_events) > 0:
                 print(str(trajectory) + ": " + str(trajectory_events))
                 show_trajectory(file, trajectory, fpra, heading_std_threshold, speed_fraction)
 
