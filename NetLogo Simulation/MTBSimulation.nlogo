@@ -1,23 +1,48 @@
 extensions [vid]
 breed [residues residue]
-residues-own [tumble uturn]
-globals [numtumbles numreverses shapevar numuturns filename]
+
+residues-own [
+  tumble ; tumble value of 0 is required for a run. A tumble value above 0 will make the turtle tumble. When a turtle starts tumbling, tumble value is 1 and decreases by 1 / own-tumble-duration each tick
+  own-tumble-duration ; the tumble duration assigned to each turtle each tumble based on a normal distribution
+  uturn  ; uturn value of 0 is required for a run. A uturn value above 0 will make the turtle uturn. When a turtle starts turning, uturn value is 1 and decreases by 1 / uturn each tick
+  cooldown ; a cooldown period where, when above 0, will restrict any events. A turtle enters a cooldown after completing an event and it starts at 1 and decreases by 1  / eventcooldown each tick
+]
+
+globals [
+  histogram-list
+  numtumbles    ; the total number of tumbles performed by the turtles and logged on this variable
+  numreverses   ; the total number of reverses performed by the turtles and logged on this variable
+  shapevar      ; a variable used when the MTBshape variable is true. This variable logs the shape at which turtle's MTB is using and then randomly selects from a list to vary the shape of the MTB
+  numuturns     ; the total number of uturns performed by the turtles and logged on this variable
+  heading-noise ; the directional noise experienced by the turtles, based on the rotational force experienced by magnetotactic bacteria, as found in Yu et al. 2022
+]
+
+to set-heading-noise
+  let Fr (4 * 10 ^ (-20))                          ; Force due to rotation, from Yu et al. 4 * 10 ^ - 20 kg m^2 /s
+  let Dr ( ( 1.3806503 * 10 ^ (-23) * 300 ) / Fr ) ; Rotational diffusion. Dr = kT / Fr
+  let var (2 * Dr * delta-t * ( 180 / pi ))        ; The variance of the rotational diffusion
+  set heading-noise (sqrt ( var ))                 ; The standard deviation of the variance is then set to the variable 'heading-noise' which is then used to randomly vary the heading of the turtles
+end
 
 to setup
   clear-all
   reset-ticks
-  create-residues numMTB [
-    setxy random-xcor random-ycor
-    ifelse MTBshape [set shape "mtb1" ] [set shape "circle"]
-    set size 1.4 set color black
-    set tumble 0
+  setup-plot
+  set histogram-list []
+  set-heading-noise                                                          ; go through the procedure 'set-heading-noise' which calculates and sets the heading-noise variable
+  create-residues numMTB [                                                   ; create the number of turtles as stated in the numMTB variable
+    setxy random-xcor random-ycor                                            ; set random x and y coordinates for the turtles
+    ifelse MTBshape [set shape "mtb1" ] [set shape "circle"]                 ; if MTBshape variable is true, then set the shape of the turtle to an MTB, otherwise to a circle
+    set size 1.4 set color black                                             ; set the size of the turtles to 1.4 and colour them black
+    if pendownstate [pendown]                                                ; if the pendownstate variable is true, set pendown, which adds a trailing line to all turtles
+    set cooldown 1                                                           ; enable cooldown upon creating turtle to prevent events for the first few ticks
   ]
      ask patches [
-     set pcolor white
+     set pcolor white                                                        ; set the color of the patches to white (patches also known as the background)
    ]
-  if saveimagesequence [export-view (word savedirectory date-and-time "_" numtumbles "tumbles_" numreverses "revereses_" numuturns "uturns" ".png")]
-  if savepos [file-open word savedirectory "trajectories.csv"
-    file-type "Trajectory,x,y"
+  if saveimagesequence [export-view (word savedirectory date-and-time "_" numtumbles "tumbles_" numreverses "revereses_" numuturns "uturns" ".png")] ; export the current image if saveimagesequence is turned on
+  if savepos [file-open word savedirectory "trajectories.csv"                ; setup a csv file to save the positons of all turtles for each tick
+    file-type "Trajectory,x,y,Frame,tumble,reverse,uturn"
     file-type "\n"
     ask residues
     [
@@ -26,6 +51,14 @@ to setup
       file-type xcor
       file-type ","
       file-type ycor
+      file-type ","
+      file-type ticks
+      file-type ","
+      file-type numtumbles
+      file-type ","
+      file-type numreverses
+      file-type ","
+      file-type numuturns
       file-type "\n"
     ]
     file-close
@@ -33,78 +66,113 @@ to setup
 end
 
 to go
-  ask residues [
-    if die-on-border and (xcor < -15.5 or xcor > 15.5 or xcor < -15.5 or ycor > 15.5) [ setxy random-xcor random-ycor ]
-      ifelse uturn > 0[
-      set uturn uturn - ( 1 / uturnlength )
-      set heading heading + random-float 18
-      if uturnstamp [set color blue stamp set color black]
-      forward stepsize
+  ask residues [                                                    ; begin commanding the turtles
+    if die-on-border and (xcor < -15.5 or xcor > 15.5 or xcor < -15.5 or ycor > 15.5) [ setxy random-xcor random-ycor  set cooldown 1] ; kill turtle if they touch the border and re-position randomly in the simulation
+    ifelse cooldown > 0 [                                           ; if turtle has a cooldown parameter greater than 0, then continue
+      set cooldown cooldown - ( 1 / eventcooldown)                  ; reduce cooldown variable by 1/cooldown
+      set heading heading + random-normal 0 heading-noise           ; change the heading of each turtle based on the heading based on rotational diffusion
+      forward stepsize                                              ; take a step in the amount of the variable stepsize
     ]
     [
-      ifelse tumble > 0[
-        set tumble tumble - ( 1 / tumblelength )
-        set heading random-float 360
-        if tumblestamp [set color red stamp set color black]
-        forward stepsize / 4
-      ][
-        ifelse random-float 1 < probrev and (xcor < (max-pxcor - noeventperimeter)) and (xcor > (min-pxcor - noeventperimeter) ) and (ycor < (max-pycor - noeventperimeter)) and (ycor > (min-pycor - noeventperimeter) )[
-          ifelse random-float 1 < probuturn[
-            set uturn 1
-            set uturn uturn - ( 1 / uturnlength )
-            set heading heading + random-float 18
-            set numuturns numuturns + 1
-            forward stepsize
-          ]
-          [
-            set heading heading + 180
-            if reversestamp[set color green stamp set color black]
-            forward stepsize
-            set numreverses numreverses + 1
-          ]
-          ][
-            ifelse random-float 1 < probtumble and (xcor < (max-pxcor - noeventperimeter)) and (xcor > (min-pxcor - noeventperimeter) ) and (ycor < (max-pycor - noeventperimeter)) and (ycor > (min-pycor - noeventperimeter) )[
-              set tumble 1
-              set heading random-float 360
-              forward stepsize / 4
-              set numtumbles numtumbles + 1
-            ]
-            [
-              set heading heading + random-normal 0 directional_noise
-              forward stepsize
-            ]
-          ]
-        ]
-    ]
-    if MTBshape[
-      set shapevar random 4 + 1
-      set shapevar word "mtb" shapevar
-      set shape shapevar
+     ifelse uturn > 0[                                                             ; if the uturn parameter for the turtle is greater than 0, initiate uturn behaviour:
+       set uturn abs (uturn) - ( 1 / uturn-duration )                              ; reduce uturn parameter by 1 / uturn-duration
+       set heading heading + random-normal ( 180 / uturn-duration) heading-noise   ; increase the heading of the turtle by 180 / uturn-duration and adding the heading-noise
+       if uturnstamp [set color blue stamp set color black]                        ; if uturnstamp is turned on, stamp the shape of the turtle as it moves through the uturn
+       forward stepsize                                                            ; take a step in the amount of the variable stepsize
+       if uturn <= 0 [set cooldown 1]                                              ; if the uturn is done then set the cooldown of the turtle to 1 to prevent back-to-back events
+     ]
+     [
+       ifelse tumble > 0[                                                          ; if the tumble parameter for the turtle is greater than 0, initiate tumble behaviour:
+         set tumble (tumble  - ( 1 / own-tumble-duration ))                        ; reduce tumble parameter by 1 / own-tumble-duration
+         set heading random-float 360                                              ; set the heading randomly from 0 to 360 degrees
+         if tumblestamp [set color red stamp set color black]                      ; if tumblestamp is turned on, stamp the shape of the turtle as it tumbles
+         forward stepsize / 4                                                      ; move forward by a quarter of the stepsize
+         if tumble <= 0 [set cooldown 1]                                           ; if the tumble is down, set cooldown of the turtle to 1 to prevent back-to-back events
+       ][
+         ifelse random-float 1 < probrev and (xcor < (max-pxcor - noeventperimeter)) and (xcor > (min-pxcor + noeventperimeter) ) and (ycor < (max-pycor - noeventperimeter)) and (ycor > (min-pycor + noeventperimeter) )[ ; if the turtle is not on the no event perimeter defined by patches and the random float is less than the probability of a reverse then:
+           ifelse random-float 1 < probuturn[                                                       ; Randomly select a number between 0 and 1 and if it is less than the probability of a uturn, then uturn
+             set uturn 1                                                                            ; Set uturn parameter to 1
+             set uturn abs (uturn) - ( 1 / uturn-duration )                                         ; reduce uturn parameter by 1 / uturn-duration
+             set heading heading + random-normal ( 180 / uturn-duration) heading-noise              ; increase the heading of the turtle by 180 / uturn-duration and adding the heading-noise
+             if uturnstamp [set color blue stamp set color black]                                   ; if uturnstamp is turned on, stamp the shape of the turtle as it moves through the uturn
+             set numuturns numuturns + 1                                                            ; increase the number of uturns that have been performed by one
+             if uturn <= 0 [set cooldown 1]                                                         ; if the uturn is done then set the cooldown of the turtle to 1 to prevent back-to-back events
+           ]
+           [                                                                                        ; if the chance to do a uturn fails, then do a reverse:
+             set heading heading + 180                                                              ; increase the heading of the turtle by 180 degrees
+             if reversestamp[set color green stamp set color black]                                 ; if reversestamp is on then stamp the shape of the turtle as it reverses
+             forward stepsize                                                                       ; take a step in the amount of the variable stepsize
+             set numreverses numreverses + 1                                                        ; increase the number of reverses that have been performed by one
+             set cooldown 1                                                                         ; set the cooldown of the turtle to 1 to prevent back-to-back events
+           ]
+         ][
+           ifelse random-float 1 < probtumble and (xcor < (max-pxcor - noeventperimeter)) and (xcor > (min-pxcor + noeventperimeter) ) and (ycor < (max-pycor - noeventperimeter)) and (ycor > (min-pycor + noeventperimeter) )[ ; if the turtle is not on the no event perimeter defined by patches and the random float is less than the probability of a tumble then:
+             set tumble 1                                                                           ; set tumble parameter to 1
+             set own-tumble-duration abs ( random-normal tumble-duration (0.341 * tumble-duration) ); set the tumble duration of this specific tumble to a value selected from a normal distribution centered at the tumble-duration integer with one gaussian standard deviation
+             set histogram-list lput own-tumble-duration histogram-list                             ; update the histogram of tumble durations
+             set heading random-float 360                                                           ; randomly set the heading of the turtle
+             forward stepsize / 4                                                                   ; move forward by a quarter of the stepsize
+             set numtumbles numtumbles + 1                                                          ; increase the number of tumbles that have been performed by one
+           ]
+           [
+             set heading heading + random-normal 0 heading-noise                                    ; if no event has been triggered, then set heading to a new heading based on a normal distibution centered at zero and the standard deviation is the heading noise calculated from the rotational diffusion
+             forward stepsize                                                                       ; take a step in the amount of the variable stepsize
+           ]
+         ]
+       ]
+     ]
+   ]
+    if MTBshape[                                       ; if the boolean MTBshape is set to true, set the shape of the turtle to look like a sprillum bacterium
+      set shapevar random 4 + 1                        ; select a number between 1 and 4
+      set shapevar word "mtb" shapevar                 ; add the word mtb to the number
+      set shape shapevar                               ; set the shape randomly between 4 shapes
     ]
   ]
-  if saveimagesequence [export-view (word savedirectory date-and-time "_" numtumbles "tumbles_" numreverses "revereses_" numuturns "uturns" ".png")]
-  if savepos [file-open word savedirectory "trajectories.csv" ask residues
+  if saveimagesequence [export-view (word savedirectory date-and-time "_" numtumbles "tumbles_" numreverses "revereses_" numuturns "uturns" ".png")] ; export the current image if saveimagesequence is turned on
+  if savepos [file-open word savedirectory "trajectories.csv" ask residues    ; add the position and other info to the csv file for all turtles for this tick
     [
       file-type who
       file-type ","
       file-type xcor
       file-type ","
       file-type ycor
+      file-type ","
+      file-type ticks
+      file-type ","
+      file-type numtumbles
+      file-type ","
+      file-type numreverses
+      file-type ","
+      file-type numuturns
       file-type "\n"
     ]
     file-close
   ]
   tick
+  plot-p1
+end
+
+
+
+to setup-plot
+  set-current-plot "Distribution of Tumble Durations"       ; set the plot and plot name for the tumble duration histogram
+  set-plot-x-range 0 (tumble-duration * 3)                  ; set the x axis from 0 to triple the set tumble duration
+  set-plot-y-range 0 500                                    ; set the y plot range from 0 to 500
+end
+
+to plot-p1
+  set-current-plot "Distribution of Tumble Durations"       ; Access the tumble duration histogram
+  histogram histogram-list                                  ; plot the histogram list with all of the tumble durations
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 232
 21
-669
-459
+701
+491
 -1
 -1
-13.0
+13.97
 1
 10
 1
@@ -125,30 +193,30 @@ ticks
 30.0
 
 SLIDER
-29
-309
-201
-342
+19
+330
+191
+363
 probrev
 probrev
 0
 1
-0.006
+0.02
 0.001
 1
 per tick
 HORIZONTAL
 
 SLIDER
-24
-361
-211
-394
+14
+382
+201
+415
 probtumble
 probtumble
 0
 1
-0.006
+0.02
 0.001
 1
 per tick
@@ -163,7 +231,7 @@ numMTB
 numMTB
 0
 100
-10.0
+1.0
 1
 1
 NIL
@@ -204,10 +272,10 @@ NIL
 1
 
 SLIDER
-1183
-91
-1355
-124
+954
+277
+1126
+310
 stepsize
 stepsize
 0
@@ -219,25 +287,25 @@ per tick
 HORIZONTAL
 
 SLIDER
-736
-65
-908
-98
-tumblelength
-tumblelength
+24
+537
+204
+570
+tumble-duration
+tumble-duration
 0
 50
-10.0
+15.0
 1
 1
 ticks
 HORIZONTAL
 
 MONITOR
-1061
-207
-1196
-252
+730
+51
+865
+96
 Number of Tumbles
 numtumbles
 17
@@ -245,10 +313,10 @@ numtumbles
 11
 
 MONITOR
-1221
-207
-1359
-252
+890
+51
+1028
+96
 Number of Reverses
 numreverses
 17
@@ -256,25 +324,25 @@ numreverses
 11
 
 SLIDER
-737
-109
-909
-142
-uturnlength
-uturnlength
+25
+581
+197
+614
+uturn-duration
+uturn-duration
 0
 50
-20.0
+15.0
 1
 1
 ticks
 HORIZONTAL
 
 MONITOR
-1140
-265
-1275
-310
+809
+109
+944
+154
 Number of U-Turns
 numuturns
 17
@@ -282,10 +350,10 @@ numuturns
 11
 
 SWITCH
-699
-207
-837
-240
+1089
+61
+1227
+94
 tumblestamp
 tumblestamp
 1
@@ -293,10 +361,10 @@ tumblestamp
 -1000
 
 SWITCH
-778
-257
-907
-290
+1257
+107
+1386
+140
 uturnstamp
 uturnstamp
 1
@@ -304,30 +372,30 @@ uturnstamp
 -1000
 
 TEXTBOX
-732
-176
-987
-214
-Visualize tumbles and u-turns
+1177
+27
+1431
+68
+Visualize Events
 15
 0.0
 1
 
 TEXTBOX
-1150
-175
-1300
-194
+819
+19
+969
+38
 Event Counters
 15
 0.0
 1
 
 TEXTBOX
-50
-278
-200
-297
+40
+299
+190
+318
 Event Probabilities
 15
 0.0
@@ -344,10 +412,10 @@ Number of MTB
 1
 
 SWITCH
-858
-207
-999
-240
+1248
+61
+1389
+94
 reversestamp
 reversestamp
 1
@@ -355,30 +423,30 @@ reversestamp
 -1000
 
 TEXTBOX
-763
-32
-913
 51
+504
+201
+523
 Length of Events
 15
 0.0
 1
 
 TEXTBOX
-1078
-18
-1292
-56
+849
+204
+1063
+242
 Movement Parameters
 15
 0.0
 1
 
 INPUTBOX
-886
-347
-1181
-407
+323
+541
+618
+601
 savedirectory
 0
 1
@@ -386,10 +454,10 @@ savedirectory
 String
 
 SWITCH
-1004
-418
-1184
-451
+363
+613
+543
+646
 saveimagesequence
 saveimagesequence
 1
@@ -397,10 +465,10 @@ saveimagesequence
 -1000
 
 TEXTBOX
-969
-319
-1119
-338
+406
+513
+556
+532
 Sequence Output
 15
 0.0
@@ -418,10 +486,10 @@ MTBshape
 -1000
 
 SWITCH
-886
-417
-994
-450
+245
+612
+353
+645
 savepos
 savepos
 1
@@ -429,21 +497,21 @@ savepos
 -1000
 
 SWITCH
-1195
-51
-1343
-84
+966
+237
+1114
+270
 die-on-border
 die-on-border
-0
+1
 1
 -1000
 
 SLIDER
-28
-416
-203
-449
+18
+437
+193
+470
 probuturn
 probuturn
 0
@@ -455,10 +523,10 @@ per reverse
 HORIZONTAL
 
 SLIDER
-971
-50
-1186
-83
+742
+236
+957
+269
 noeventperimeter
 noeventperimeter
 0
@@ -479,20 +547,64 @@ Simulation Controls\n
 0.0
 1
 
+SWITCH
+1088
+105
+1231
+138
+pendownstate
+pendownstate
+1
+1
+-1000
+
 SLIDER
-965
-93
-1169
-126
-directional_noise
-directional_noise
+749
+278
+928
+311
+eventcooldown
+eventcooldown
 0
-10
-3.0
+100
+10.0
 1
 1
-degrees
+ticks
 HORIZONTAL
+
+SLIDER
+555
+615
+768
+648
+delta-t
+delta-t
+0
+1
+0.01
+0.01
+1
+seconds per tick
+HORIZONTAL
+
+PLOT
+1145
+172
+1402
+360
+Distribution of Tumble Durations
+tumble-duration (ticks)
+# of Tumbles
+0.0
+10.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -16777216 true "" "plot histogram-list"
 
 @#$#@#$#@
 ## WHAT IS IT?
